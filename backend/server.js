@@ -2,6 +2,10 @@ const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const OpenAI = require('openai');
+const sqlite3 = require('sqlite3');
+const uuid = require('uuid');
+var cookieParser = require('cookie-parser')
+var session = require('express-session')
 
 console.log('Directory name:', __dirname);
 console.log('Full .env path:', path.join(__dirname, '../.env'));
@@ -14,18 +18,49 @@ console.log('Environment variables loaded:', {
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
+app.use(session({
+	secret: 'random_string',
+	resave: false,
+	saveUninitialized: true
+}));
 
 // Serve static files from the frontend directory
 app.use(express.static(path.join(__dirname, '../frontend')));
 
+// Configure sqlite
+const db = new sqlite3.Database('chat.logs');
+db.serialize(() => {
+	db.run(`CREATE TABLE IF NOT EXISTS logs \
+	(SessionID INT(255), \
+	dt DATETIME DEFAULT CURRENT_TIMESTAMP, \
+	UserQuery TEXT, Response TEXT)`);
+});
+
 // Configure OpenAI API with correct initialization
+/*
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
+});
+*/
+
+app.get('/api/chat', function (req, res) {
+	const id = uuid.v4();
+	res.cookie('id', id, {httpOnly: true});
 });
 
 app.post('/api/chat', async (req, res) => {
     try {
         const userInput = req.body.message;
+
+	    const stmt = db.prepare("INSERT INTO Logs (SessionID, UserQuery, Response) " +
+	    	"VALUES (?, ?, ?)");
+
+	    // When implementing with OpenAI Response, replace second userInput
+	    // with the correct response.
+	    stmt.run(req.sessionID, userInput, userInput);
+
+	    res.json({response:userInput});
         // Request a response from the OpenAI API
         // const response = await openai.chat.completions.create({
         //     model: "gpt-4-turbo-preview",
@@ -35,6 +70,7 @@ app.post('/api/chat', async (req, res) => {
         //     presence_penalty: 0.1,  // Encourages the model to talk about new topics
         //     frequency_penalty: 0.1  // Reduces repetition in responses
         // });
+/*	    
         // Create a thread
         const thread = await openai.beta.threads.create();
 
@@ -77,9 +113,9 @@ app.post('/api/chat', async (req, res) => {
 
         // Get the last assistant message
         const assistantResponse = messages.data[0].content[0].text.value;
-        
         // Send response back to frontend
         res.json({ response: assistantResponse });
+*/
     } catch (error) {
         console.error('Error:', error);
         res.status(500).json({ error: 'Internal server error' });
