@@ -104,3 +104,20 @@ async function sendMessage() {
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 }
+
+document.getElementById('toggleAdminPanel').addEventListener('click', function() {
+  const chatInterface = document.getElementById('chatInterface');
+  const adminPanel = document.getElementById('adminPanel');
+  const button = document.getElementById('toggleAdminPanel');
+
+  if (adminPanel.style.display === 'none') {
+      adminPanel.style.display = 'block';
+      chatInterface.style.display = 'none';
+      button.innerText = 'Back to Chat';
+      loadLogs(); 
+  } else {
+      adminPanel.style.display = 'none';
+      chatInterface.style.display = 'block';
+      button.innerText = 'Go to Admin Panel';
+  }
+});
