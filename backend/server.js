@@ -3,8 +3,6 @@ const express = require('express');
 const cors = require('cors');
 const OpenAI = require('openai');
 const sqlite3 = require('sqlite3');
-const uuid = require('uuid');
-var cookieParser = require('cookie-parser')
 var session = require('express-session')
 
 console.log('Directory name:', __dirname);
@@ -18,9 +16,10 @@ console.log('Environment variables loaded:', {
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(cookieParser());
+
+// Session management for logging
 app.use(session({
-	secret: 'random_string',
+	secret: 'random_string',	// TODO something better than this
 	resave: false,
 	saveUninitialized: true
 }));
@@ -43,11 +42,6 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 */
-
-app.get('/api/chat', function (req, res) {
-	const id = uuid.v4();
-	res.cookie('id', id, {httpOnly: true});
-});
 
 app.post('/api/chat', async (req, res) => {
     try {
