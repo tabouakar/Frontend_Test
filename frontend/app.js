@@ -6,34 +6,26 @@ document.getElementById('userInput').addEventListener('keypress', function(e) {
 
 // Updated linkify function to handle parentheses and formatting
 function linkify(text) {
-    // First, handle line breaks and lists
-    text = text.replace(/\n/g, '<br>');
+    // Handle line breaks, lists, and URLs
+    text = text.replace(/\n/g, '<br>'); // Line breaks
+    text = text.replace(/(\d+\.)\s/g, '<br>$1 '); // Numbered lists
+    text = text.replace(/•\s/g, '<br>• ').replace(/\*\s/g, '<br>* '); // Bullet points
     
-    // Handle numbered lists (1. 2. 3. etc)
-    text = text.replace(/(\d+\.)\s/g, '<br>$1 ');
-    
-    // Handle bullet points
-    text = text.replace(/•\s/g, '<br>• ');
-    text = text.replace(/\*\s/g, '<br>* ');
-    
-    // Handle URLs - updated regex to exclude trailing punctuation
+    // URL detection with improved regex
     const urlRegex = /(https?:\/\/[^\s)]+)/g;
-    text = text.replace(urlRegex, function(url) {
-        // Remove any trailing punctuation from the URL
+    text = text.replace(urlRegex, (url) => {
         const cleanUrl = url.replace(/[.,;:)]$/, '');
         return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
     });
-    
-    // Remove the first <br> if it exists at the start of the text
-    text = text.replace(/^<br>/, '');
-    
-    return text;
+
+    // Remove initial <br> if it exists
+    return text.replace(/^<br>/, '');
 }
 
 async function sendMessage() {
-    const userInput = document.getElementById('userInput').value;
-    if (!userInput.trim()) return; // Don't send empty messages
-    
+    const userInput = document.getElementById('userInput').value.trim();
+    if (!userInput) return;
+
     const messagesDiv = document.getElementById('messages');
     const button = document.querySelector('button');
     const input = document.getElementById('userInput');
@@ -43,7 +35,7 @@ async function sendMessage() {
     userMessageDiv.classList.add('message', 'user-message');
     userMessageDiv.innerText = userInput;
     messagesDiv.appendChild(userMessageDiv);
-    
+
     // Clear input and disable controls
     input.value = '';
     input.disabled = true;
@@ -70,7 +62,7 @@ async function sendMessage() {
         }
 
         const data = await response.json();
-        
+
         // Remove loading message
         loadingDiv.remove();
 
@@ -81,18 +73,12 @@ async function sendMessage() {
         // Display bot response with clickable links
         const botMessageDiv = document.createElement('div');
         botMessageDiv.classList.add('message', 'bot-message');
-        botMessageDiv.innerHTML = linkify(data.response); // Use innerHTML instead of innerText
+        botMessageDiv.innerHTML = linkify(data.response);
         messagesDiv.appendChild(botMessageDiv);
-        
+
     } catch (error) {
-        console.error('Error:', error);
-        // Remove loading message if it exists
-        loadingDiv.remove();
-        
-        const errorDiv = document.createElement('div');
-        errorDiv.classList.add('message', 'error-message');
-        errorDiv.innerText = error.message || 'Sorry, something went wrong. Please try again.';
-        messagesDiv.appendChild(errorDiv);
+        // Use handleError function for error messages
+        window.chatUtils.handleError(error, messagesDiv);
     } finally {
         // Re-enable controls
         input.disabled = false;
@@ -104,3 +90,15 @@ async function sendMessage() {
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 }
+
+// Expose linkify and handleError as utilities for consistency
+window.chatUtils = {
+    formatMessage: linkify,
+    handleError: (error, messagesDiv) => {
+        console.error('Error:', error);
+        const errorDiv = document.createElement('div');
+        errorDiv.classList.add('message', 'error-message');
+        errorDiv.innerText = error.message || 'Sorry, something went wrong. Please try again.';
+        messagesDiv.appendChild(errorDiv);
+    }
+};

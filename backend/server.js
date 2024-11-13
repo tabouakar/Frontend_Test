@@ -2,6 +2,8 @@ const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const OpenAI = require('openai');
+const sqlite3 = require('sqlite3');
+const session = require('express-session');
 
 console.log('Directory name:', __dirname);
 console.log('Full .env path:', path.join(__dirname, '../.env'));
@@ -15,8 +17,26 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Session management for logging
+app.use(session({
+    secret: 'random_string', // TODO: Replace with a secure secret
+    resave: false,
+    saveUninitialized: true
+}));
+
 // Serve static files from the frontend directory
 app.use(express.static(path.join(__dirname, '../frontend')));
+
+// Configure sqlite
+const db = new sqlite3.Database('chat.logs');
+db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS Logs (
+        SessionID TEXT, 
+        dt DATETIME DEFAULT CURRENT_TIMESTAMP, 
+        UserQuery TEXT, 
+        Response TEXT
+    )`);
+});
 
 // Configure OpenAI API with correct initialization
 const openai = new OpenAI({
@@ -36,32 +56,27 @@ app.post('/api/chat', async (req, res) => {
         //     frequency_penalty: 0.1  // Reduces repetition in responses
         // });
         // Create a thread
+
+        // Create a thread
         const thread = await openai.beta.threads.create();
 
-        // Add a message to the thread
+        // Add the user's message to the thread
         await openai.beta.threads.messages.create(
             thread.id,
-            {
-                role: "user",
-                content: userInput
-            }
+            { role: "user", content: userInput }
         );
 
         // Run the assistant
         const run = await openai.beta.threads.runs.create(
             thread.id,
-            {
-                assistant_id: process.env.ASSISTANT_ID
-            }
+            { assistant_id: process.env.ASSISTANT_ID }
         );
 
-        // Wait for the run to complete
+        // Poll for completion
         let runStatus = await openai.beta.threads.runs.retrieve(
             thread.id,
             run.id
         );
-
-        // Poll for completion
         while (runStatus.status !== 'completed') {
             await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
             runStatus = await openai.beta.threads.runs.retrieve(
@@ -70,20 +85,53 @@ app.post('/api/chat', async (req, res) => {
             );
         }
 
-        // Get the messages
+        // Get the assistant response
         const messages = await openai.beta.threads.messages.list(
             thread.id
         );
-
-        // Get the last assistant message
         const assistantResponse = messages.data[0].content[0].text.value;
-        
-        // Send response back to frontend
+
+        // Insert into logs
+        const stmt = db.prepare("INSERT INTO Logs (SessionID, UserQuery, Response) VALUES (?, ?, ?)");
+        stmt.run(req.sessionID, userInput, assistantResponse);
+
+        // Send the assistant response back to the frontend
         res.json({ response: assistantResponse });
     } catch (error) {
         console.error('Error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
+});
+
+app.get('/api/logs', (req, res) => {
+    db.all("SELECT * FROM Logs ORDER BY dt DESC", (err, rows) => {
+        if (err) {
+            console.error('Error fetching logs:', err);
+            return res.status(500).json({ error: 'Failed to fetch logs' });
+        }
+        res.json({ logs: rows });
+    });
+});
+
+app.get('/api/logs/:sessionId', (req, res) => {
+    const { sessionId } = req.params;
+    db.all("SELECT * FROM Logs WHERE SessionID = ? ORDER BY dt DESC", [sessionId], (err, rows) => {
+        if (err) {
+            console.error('Error fetching logs:', err);
+            return res.status(500).json({ error: 'Failed to fetch logs' });
+        }
+        res.json({ logs: rows });
+    });
+});
+
+app.delete('/api/deleteAllLogs', (req, res) => {
+    db.run("DELETE FROM Logs", function(err) {
+        if (err) {
+            console.error('Error deleting logs:', err);
+            return res.status(500).json({ error: 'Failed to delete logs' });
+        }
+        res.status(200).json({ message: 'All logs deleted' });
+    });
 });
 
 const PORT = 3000;
